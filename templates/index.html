@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gradle Cache Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="app-shell">
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-brand">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.29 7 12 12 20.71 7"/>
+                <line x1="12" y1="22" x2="12" y2="12"/>
+            </svg>
+            <h1>Gradle Cache Manager</h1>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn--primary" onclick="App.refreshAll()" id="refreshBtn"></button>
+            <button class="btn btn--ghost" onclick="App.stopDaemons()" id="stopBtn"></button>
+        </div>
+    </header>
+
+    <!-- Overview Cards -->
+    <div class="overview-grid" id="overview"></div>
+
+    <!-- Tab Bar -->
+    <nav class="tab-bar">
+        <button class="tab-btn active" data-tab="distributions" onclick="App.switchTab('distributions')" id="tabDist"></button>
+        <button class="tab-btn" data-tab="libraries" onclick="App.switchTab('libraries')" id="tabLib"></button>
+        <button class="tab-btn" data-tab="caches" onclick="App.switchTab('caches')" id="tabCache"></button>
+        <button class="tab-btn" data-tab="daemons" onclick="App.switchTab('daemons')" id="tabDaemon"></button>
+        <button class="tab-btn" data-tab="konan" onclick="App.switchTab('konan')" id="tabKonan"></button>
+        <button class="tab-btn" data-tab="properties" onclick="App.switchTab('properties')" id="tabProps"></button>
+    </nav>
+
+    <!-- Tab Content -->
+    <section id="tabContent">
+        <div class="loading-state"><div class="spinner"></div>Scanning Gradle home&hellip;</div>
+    </section>
+
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-backdrop" id="modalBackdrop"></div>
+
+<!-- Snippet Modal (Wrapper Config / Library Dependency) -->
+<div class="modal-backdrop" id="snippetBackdrop"></div>
+
+<!-- Toast Notification -->
+<div class="toast" id="toast"></div>
+
+<!-- Scripts (order matters: icons → components → app) -->
+<script src="/static/icons.js"></script>
+<script src="/static/components.js"></script>
+<script src="/static/app.js"></script>
+
+<!-- Inject icon-dependent button labels after icons.js loads -->
+<script>
+    document.getElementById("refreshBtn").innerHTML = Icons.refresh(14) + " Refresh";
+    document.getElementById("stopBtn").innerHTML    = Icons.square(14)  + " Stop Daemons";
+    document.getElementById("tabDist").innerHTML    = Icons.package(16) + " Distributions";
+    document.getElementById("tabLib").innerHTML     = Icons.library(16) + " Libraries";
+    document.getElementById("tabCache").innerHTML   = Icons.database(16) + " Caches";
+    document.getElementById("tabDaemon").innerHTML  = Icons.activity(16) + " Daemons";
+    document.getElementById("tabKonan").innerHTML   = Icons.wrench(16) + " Kotlin/Native";
+    document.getElementById("tabProps").innerHTML   = Icons.sliders(16) + " Properties";
+</script>
+
+</body>
+</html>
