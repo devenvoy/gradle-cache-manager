@@ -14,9 +14,21 @@ help: ## Show this help menu
 	@echo ""
 
 run: ## Run server in foreground and auto-open browser
+	@if lsof -ti:$(PORT) >/dev/null 2>&1; then \
+		echo "Port $(PORT) is currently in use. Stopping existing instance..."; \
+		lsof -ti:$(PORT) | xargs kill -9 2>/dev/null; \
+		rm -f $(PID_FILE); \
+		sleep 0.5; \
+	fi
 	$(PYTHON) $(SCRIPT) --port $(PORT)
 
 run-no-browser: ## Run server in foreground without opening browser
+	@if lsof -ti:$(PORT) >/dev/null 2>&1; then \
+		echo "Port $(PORT) is currently in use. Stopping existing instance..."; \
+		lsof -ti:$(PORT) | xargs kill -9 2>/dev/null; \
+		rm -f $(PID_FILE); \
+		sleep 0.5; \
+	fi
 	$(PYTHON) $(SCRIPT) --port $(PORT) --no-browser
 
 start: ## Start server in background

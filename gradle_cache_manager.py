@@ -173,7 +173,17 @@ def main():
     parser.add_argument("--no-browser", action="store_true", help="Don't open the browser automatically")
     args = parser.parse_args()
 
-    server = HTTPServer(("", args.port), Handler)
+    HTTPServer.allow_reuse_address = True
+    try:
+        server = HTTPServer(("", args.port), Handler)
+    except OSError as exc:
+        if exc.errno == 48:
+            print(f"\n  ⚠️  Port {args.port} is already in use.")
+            print(f"  👉 If running in the background, stop it with:  make stop")
+            print(f"  👉 Or view the running instance at:          http://localhost:{args.port}\n")
+            return
+        raise exc
+
     url = f"http://localhost:{args.port}"
 
     print()
