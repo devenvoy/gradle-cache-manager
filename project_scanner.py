@@ -23,6 +23,7 @@ from pathlib import Path
 from datetime import datetime
 
 BASELINE_FILE = Path.home() / ".gradle" / "gcm-baseline.json"
+PROJECTS_REGISTRY_FILE = Path.home() / ".gradle" / "gcm-projects.json"
 
 # Key frameworks to track and align across projects
 KEY_DEPENDENCY_KEYS = [
@@ -46,24 +47,80 @@ def parse_semver_key(v_str: str) -> list:
             parts.append((1, weight, tag))
     return parts
 
+def get_registered_project_paths() -> list[str]:
+    """Load persistent list of registered project paths from ~/.gradle/gcm-projects.json."""
+    if not PROJECTS_REGISTRY_FILE.exists():
+        return []
+    try:
+        data = json.loads(PROJECTS_REGISTRY_FILE.read_text())
+        if isinstance(data, list):
+            return [str(p) for p in data if Path(p).is_dir()]
+    except Exception:
+        pass
+    return []
+
+def save_registered_project_paths(paths: list[str]):
+    """Save persistent list of registered project paths to ~/.gradle/gcm-projects.json."""
+    unique = sorted(list(set(str(Path(p).resolve()) for p in paths if Path(p).is_dir())))
+    PROJECTS_REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PROJECTS_REGISTRY_FILE.write_text(json.dumps(unique, indent=2))
+
+def register_project(path_str: str, name: str = None) -> dict | None:
+    """Register a new project path dynamically (e.g. from Android Studio plugin or user UI)."""
+    p = Path(path_str).resolve()
+    if not p.is_dir():
+        return None
+    proj_data = inspect_project(p)
+    if proj_data:
+        current_paths = get_registered_project_paths()
+        p_str = str(p)
+        if p_str not in current_paths:
+            current_paths.append(p_str)
+            save_registered_project_paths(current_paths)
+    return proj_data
+
+def unregister_project(path_str: str) -> bool:
+    """Unregister a project path from ~/.gradle/gcm-projects.json."""
+    current_paths = get_registered_project_paths()
+    target = str(Path(path_str).resolve())
+    if target in current_paths:
+        current_paths.remove(target)
+        save_registered_project_paths(current_paths)
+        return True
+    return False
+
 def discover_projects(search_dir: Path = None) -> list[dict]:
-    """Find all Gradle projects that have a gradle/ directory."""
+    """
+    Find all Gradle projects dynamically.
+    Combines:
+      1. Registered projects from ~/.gradle/gcm-projects.json (reported by plugin or manually added)
+      2. Auto-discovery under ~/Developer (and any sub-directories or search dirs)
+    """
+    discovered_paths = set(get_registered_project_paths())
+
     if search_dir is None:
         search_dir = Path.home() / "Developer"
 
-    projects = []
-    if not search_dir.exists():
-        return projects
+    if search_dir.exists():
+        for child in sorted(search_dir.iterdir()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            has_gradle = (child / "gradle").is_dir() or (child / "gradlew").is_file() or (child / "build.gradle.kts").is_file() or (child / "build.gradle").is_file()
+            if has_gradle:
+                discovered_paths.add(str(child.resolve()))
 
-    for child in sorted(search_dir.iterdir()):
-        if not child.is_dir() or child.name.startswith("."):
+    projects = []
+    valid_paths = []
+    for path_str in sorted(discovered_paths):
+        p_path = Path(path_str)
+        if not p_path.is_dir():
             continue
-        # Check if it's a Gradle project
-        has_gradle = (child / "gradle").is_dir() or (child / "gradlew").is_file() or (child / "build.gradle.kts").is_file() or (child / "build.gradle").is_file()
-        if has_gradle:
-            proj_data = inspect_project(child)
-            if proj_data:
-                projects.append(proj_data)
+        proj_data = inspect_project(p_path)
+        if proj_data:
+            projects.append(proj_data)
+            valid_paths.append(str(p_path.resolve()))
+
+    save_registered_project_paths(valid_paths)
     return projects
 
 def inspect_project(proj_dir: Path) -> dict:

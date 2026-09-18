@@ -38,7 +38,8 @@ from flags_registry import (
 )
 from project_scanner import (
     discover_projects, compute_drift_matrix, get_or_create_baseline,
-    save_stored_baseline, apply_alignment_to_project
+    save_stored_baseline, apply_alignment_to_project,
+    register_project, unregister_project
 )
 from init_enforcer import is_enforcer_enabled, enable_enforcer, disable_enforcer
 
@@ -85,6 +86,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(file_path.read_bytes(), mime or "application/octet-stream")
 
     # ----- Routing -----------------------------------------------------------
+
+    def do_HEAD(self):
+        self.do_GET()
 
     def do_GET(self):
         path = urlparse(self.path).path
@@ -172,6 +176,28 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 results.append(res)
             self._json({"success": True, "results": results})
+
+        elif path == "/api/projects/register":
+            p_path = body.get("path")
+            p_name = body.get("name")
+            if not p_path:
+                self._json({"success": False, "error": "Path required"}, 400)
+                return
+            proj_data = register_project(p_path, p_name)
+            if proj_data:
+                projects = discover_projects()
+                get_or_create_baseline(projects)
+                self._json({"success": True, "project": proj_data})
+            else:
+                self._json({"success": False, "error": "Invalid Gradle project or path not found"}, 400)
+
+        elif path == "/api/projects/unregister":
+            p_path = body.get("path")
+            if not p_path:
+                self._json({"success": False, "error": "Path required"}, 400)
+                return
+            ok = unregister_project(p_path)
+            self._json({"success": ok})
 
         elif path == "/api/baseline":
             baseline_data = body.get("baseline", {})

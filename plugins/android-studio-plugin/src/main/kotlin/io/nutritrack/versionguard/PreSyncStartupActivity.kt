@@ -9,6 +9,7 @@ import com.intellij.openapi.startup.ProjectActivity
 class PreSyncStartupActivity : ProjectActivity {
 
     override suspend fun execute(project: Project) {
+        project.basePath?.let { BaselineService.registerProject(project.name, it) }
         val baseline = BaselineService.getBaseline() ?: return
         val drifts = ProjectVersionChecker.checkProject(project, baseline)
 

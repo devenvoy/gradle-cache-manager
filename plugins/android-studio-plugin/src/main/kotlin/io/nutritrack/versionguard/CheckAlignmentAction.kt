@@ -8,6 +8,7 @@ class CheckAlignmentAction : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
+        project.basePath?.let { BaselineService.registerProject(project.name, it) }
         val baseline = BaselineService.getBaseline()
 
         if (baseline == null) {

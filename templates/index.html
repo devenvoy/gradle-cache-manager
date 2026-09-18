@@ -8,44 +8,63 @@
 </head>
 <body>
 
-<div class="app-shell">
+<div class="app-layout">
 
-    <!-- Header -->
-    <header class="header">
-        <div class="header-brand">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
-                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                <polyline points="3.29 7 12 12 20.71 7"/>
-                <line x1="12" y1="22" x2="12" y2="12"/>
-            </svg>
-            <h1>Gradle Cache Manager</h1>
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="brand">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.29 7 12 12 20.71 7"/>
+                    <line x1="12" y1="22" x2="12" y2="12"/>
+                </svg>
+                <div>
+                    <h1 class="brand-title">Gradle Cache</h1>
+                    <span class="brand-subtitle">Manager Hub</span>
+                </div>
+            </div>
         </div>
-        <div class="header-actions">
-            <button class="btn btn--primary" onclick="App.refreshAll()" id="refreshBtn"></button>
-            <button class="btn btn--ghost" onclick="App.stopDaemons()" id="stopBtn"></button>
+
+        <nav class="sidebar-nav">
+            <div class="nav-category">WORKSPACE</div>
+            <button class="nav-item tab-btn" data-tab="distributions" onclick="App.switchTab('distributions')" id="tabDist"></button>
+            <button class="nav-item tab-btn" data-tab="alignment" onclick="App.switchTab('alignment')" id="tabAlign"></button>
+            <button class="nav-item tab-btn" data-tab="libraries" onclick="App.switchTab('libraries')" id="tabLib"></button>
+
+            <div class="nav-category">CACHE & STORAGE</div>
+            <button class="nav-item tab-btn" data-tab="caches" onclick="App.switchTab('caches')" id="tabCache"></button>
+            <button class="nav-item tab-btn" data-tab="daemons" onclick="App.switchTab('daemons')" id="tabDaemon"></button>
+            <button class="nav-item tab-btn" data-tab="konan" onclick="App.switchTab('konan')" id="tabKonan"></button>
+
+            <div class="nav-category">CONFIG</div>
+            <button class="nav-item tab-btn" data-tab="properties" onclick="App.switchTab('properties')" id="tabProps"></button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-actions">
+                <button class="btn btn--primary btn--sm btn--block" onclick="App.refreshAll()" id="refreshBtn"></button>
+                <button class="btn btn--ghost btn--sm btn--block" onclick="App.stopDaemons()" id="stopBtn"></button>
+            </div>
+            <div class="server-status">
+                <span class="status-indicator"></span>
+                <span>localhost:8484 &middot; Active</span>
+            </div>
         </div>
-    </header>
+    </aside>
 
-    <!-- Overview Cards -->
-    <div class="overview-grid" id="overview"></div>
+    <!-- Main Content Area -->
+    <main class="main-content">
+        <!-- Overview Cards -->
+        <div class="overview-grid" id="overview"></div>
 
-    <!-- Tab Bar -->
-    <nav class="tab-bar">
-        <button class="tab-btn" data-tab="distributions" onclick="App.switchTab('distributions')" id="tabDist"></button>
-        <button class="tab-btn" data-tab="alignment" onclick="App.switchTab('alignment')" id="tabAlign"></button>
-        <button class="tab-btn" data-tab="libraries" onclick="App.switchTab('libraries')" id="tabLib"></button>
-        <button class="tab-btn" data-tab="caches" onclick="App.switchTab('caches')" id="tabCache"></button>
-        <button class="tab-btn" data-tab="daemons" onclick="App.switchTab('daemons')" id="tabDaemon"></button>
-        <button class="tab-btn" data-tab="konan" onclick="App.switchTab('konan')" id="tabKonan"></button>
-        <button class="tab-btn" data-tab="properties" onclick="App.switchTab('properties')" id="tabProps"></button>
-    </nav>
-
-    <!-- Tab Content -->
-    <section id="tabContent">
-        <div class="loading-state"><div class="spinner"></div>Scanning Gradle home&hellip;</div>
-    </section>
+        <!-- Tab Content -->
+        <section id="tabContent">
+            <div class="loading-state"><div class="spinner"></div>Scanning Gradle home&hellip;</div>
+        </section>
+    </main>
 
 </div>
 

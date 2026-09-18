@@ -620,6 +620,48 @@ const App = (() => {
         }
     }
 
+    async function addProjectPath() {
+        const input = $("newProjectPathInput");
+        const val = (input?.value || "").trim();
+        if (!val) {
+            showToast("Please enter a valid project directory path", "error");
+            return;
+        }
+
+        showToast("Registering project...", "info");
+        try {
+            const res = await api("projects/register", "POST", { path: val });
+            if (res.success) {
+                showToast(`Project registered: ${res.project?.name || val}`);
+                if (input) input.value = "";
+                await loadProjects(true);
+            } else {
+                showToast("Registration failed: " + (res.error || "Unknown error"), "error");
+            }
+        } catch (err) {
+            showToast("Registration failed: " + err.message, "error");
+        }
+    }
+
+    async function removeProject(path, name) {
+        if (!confirm(`Unregister project "${name || path}" from Gradle Cache Manager?\n\n(This will not delete any files on disk)`)) {
+            return;
+        }
+
+        showToast("Removing project...", "info");
+        try {
+            const res = await api("projects/unregister", "POST", { path: path });
+            if (res.success) {
+                showToast(`Unregistered ${name || path}`);
+                await loadProjects(true);
+            } else {
+                showToast("Failed: " + (res.error || "Unknown"), "error");
+            }
+        } catch (err) {
+            showToast("Failed: " + err.message, "error");
+        }
+    }
+
     async function deduplicateAllLibs() {
         if (!confirm("Clean all older/duplicate versions from cache?\n\nThe latest version of every library will be kept intact.")) {
             return;
@@ -718,6 +760,8 @@ const App = (() => {
         closeSnippet,
         // Projects & Alignment
         loadProjects,
+        addProjectPath,
+        removeProject,
         getAlignFilter,
         setAlignFilter,
         getLibViewMode,

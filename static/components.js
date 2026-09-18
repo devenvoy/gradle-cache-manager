@@ -100,7 +100,21 @@ const Components = (() => {
 
     function alignment(data) {
         if (!data || !data.projects || !data.projects.length) {
-            return emptyState("No Gradle projects found in ~/Developer", "Add projects with gradle/ directory to compare versions.");
+            return `
+                <div class="section-header">
+                    <h2>Cross-Project Version Alignment (0 Projects)</h2>
+                </div>
+                <div class="enforcer-card" style="background:var(--bg-default);margin-bottom:16px;">
+                    <div style="display:flex;align-items:center;gap:10px;flex:1;">
+                        <span style="color:var(--accent);display:flex;align-items:center;">${Icons.folder(18)}</span>
+                        <input type="text" id="newProjectPathInput" placeholder="Add external project path (e.g. /Users/devanshpc/.../my-app)..." style="flex:1;background:var(--bg-canvas);border:1px solid var(--border-default);padding:8px 12px;border-radius:var(--radius-sm);color:var(--fg-default);font-size:13px;font-family:var(--font-mono);">
+                    </div>
+                    <button class="btn btn--primary btn--sm" onclick="App.addProjectPath()">
+                        ${Icons.plus(14)} Add Project
+                    </button>
+                </div>
+                ${emptyState("No Gradle projects registered", "Enter a project path above or open your projects in Android Studio with the Gradle Version Guard plugin installed.")}
+            `;
         }
 
         const projectNames = data.project_names || (data.projects || []).map(p => typeof p === "string" ? p : p.name);
@@ -108,6 +122,13 @@ const Components = (() => {
         const drifts = matrix.filter(m => m.has_drift);
         const enforcerOn = !!data.enforcer_enabled;
         const totalDrifts = data.total_drifts || drifts.length;
+
+        const projectMap = {};
+        (data.projects || []).forEach(p => {
+            if (typeof p === "object" && p.name) {
+                projectMap[p.name] = p.path;
+            }
+        });
 
         return `
             <div class="section-header">
@@ -136,6 +157,19 @@ const Components = (() => {
                 <div class="alignment-banner-actions">
                     <button class="btn btn--primary" onclick="App.alignAllProjects()">
                         ${Icons.checkCheck(14)} Sync All to Baseline
+                    </button>
+                </div>
+            </div>
+
+            <!-- Add Project Bar -->
+            <div class="enforcer-card" style="background:var(--bg-default);">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:260px;">
+                    <span style="color:var(--accent);display:flex;align-items:center;">${Icons.folder(18)}</span>
+                    <input type="text" id="newProjectPathInput" placeholder="Add external project path (e.g. /Users/devanshpc/.../my-app)..." style="flex:1;background:var(--bg-canvas);border:1px solid var(--border-default);padding:8px 12px;border-radius:var(--radius-sm);color:var(--fg-default);font-size:13px;font-family:var(--font-mono);">
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button class="btn btn--primary btn--sm" onclick="App.addProjectPath()">
+                        ${Icons.plus(14)} Add Project
                     </button>
                 </div>
             </div>
@@ -198,7 +232,18 @@ const Components = (() => {
                     <th>Library / Key</th>
                     <th>Unified Baseline</th>
                     <th>Status</th>
-                    ${projectNames.map(p => `<th>${escapeHtml(p)}</th>`).join("")}
+                    ${projectNames.map(p => `
+                        <th>
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                                <span>${escapeHtml(p)}</span>
+                                ${projectMap[p] ? `
+                                    <button class="btn-icon" title="Unregister project" onclick="App.removeProject('${escapeAttr(projectMap[p])}','${escapeAttr(p)}')">
+                                        ${Icons.x(12)}
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </th>
+                    `).join("")}
                     <th></th>
                 </tr></thead>
                 <tbody>${matrix.filter(item => {
