@@ -110,6 +110,7 @@ class Handler(BaseHTTPRequestHandler):
             baseline = get_or_create_baseline(projects)
             self._json({
                 "projects": projects,
+                "project_names": [p["name"] for p in projects],
                 "matrix": drift_data["matrix"],
                 "wrapper_drift": drift_data["wrapper_drift"],
                 "total_drifts": drift_data["total_drifts"],
@@ -122,6 +123,18 @@ class Handler(BaseHTTPRequestHandler):
 
         elif path == "/api/enforcer":
             self._json({"enabled": is_enforcer_enabled()})
+
+        elif path == "/api/plugin/download":
+            zip_path = ROOT_DIR / "plugins" / "android-studio-plugin" / "build" / "distributions" / "gradle-version-guard-1.0.0.zip"
+            if zip_path.exists():
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", 'attachment; filename="gradle-version-guard-1.0.0.zip"')
+                self.send_header("Content-Length", str(zip_path.stat().st_size))
+                self.end_headers()
+                self.wfile.write(zip_path.read_bytes())
+            else:
+                self.send_error(404, "Plugin zip not found.")
 
         else:
             self.send_error(404)

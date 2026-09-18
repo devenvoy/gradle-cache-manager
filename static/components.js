@@ -27,11 +27,15 @@ const Components = (() => {
     }
 
     function escapeAttr(str) {
-        return str.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+        if (str == null) return "";
+        const s = (typeof str === "object" && str.name) ? str.name : String(str);
+        return s.replace(/'/g, "\\'").replace(/"/g, "&quot;");
     }
 
     function escapeHtml(str) {
-        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        if (str == null) return "";
+        const s = (typeof str === "object" && str.name) ? str.name : String(str);
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     // --- Overview ---------------------------------------------------
@@ -99,7 +103,7 @@ const Components = (() => {
             return emptyState("No Gradle projects found in ~/Developer", "Add projects with gradle/ directory to compare versions.");
         }
 
-        const projects = data.projects;
+        const projectNames = data.project_names || (data.projects || []).map(p => typeof p === "string" ? p : p.name);
         const matrix = data.matrix || [];
         const drifts = matrix.filter(m => m.has_drift);
         const enforcerOn = !!data.enforcer_enabled;
@@ -107,7 +111,7 @@ const Components = (() => {
 
         return `
             <div class="section-header">
-                <h2>Cross-Project Version Alignment (${projects.length} Projects)</h2>
+                <h2>Cross-Project Version Alignment (${projectNames.length} Projects)</h2>
                 <div style="display:flex;gap:8px;">
                     <button class="btn btn--primary btn--sm" onclick="App.alignAllProjects()">
                         ${Icons.checkCheck(14)} Align All Projects to Baseline
@@ -125,7 +129,7 @@ const Components = (() => {
                     <p>
                         ${totalDrifts > 0
                             ? `Your projects use different versions of key libraries. Aligning them forces all projects to share the exact same cached jars on your main drive.`
-                            : `All ${projects.length} projects share the same library versions and cached dependencies. Zero duplicate storage waste.`
+                            : `All ${projectNames.length} projects share the same library versions and cached dependencies. Zero duplicate storage waste.`
                         }
                     </p>
                 </div>
@@ -133,6 +137,24 @@ const Components = (() => {
                     <button class="btn btn--primary" onclick="App.alignAllProjects()">
                         ${Icons.checkCheck(14)} Sync All to Baseline
                     </button>
+                </div>
+            </div>
+
+            <!-- Android Studio Plugin Card -->
+            <div class="enforcer-card" style="background:rgba(47, 129, 247, 0.07);border-color:rgba(47, 129, 247, 0.35);">
+                <div class="enforcer-card-info">
+                    ${Icons.shield(22)}
+                    <div>
+                        <strong>Android Studio Plugin: Gradle Version Guard</strong>
+                        <div style="font-size:12px;color:var(--fg-muted);margin-top:2px;">
+                            Pre-sync hook that inspects <code>libs.versions.toml</code> when you open Android Studio and offers 1-click alignment.
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <a href="/api/plugin/download" class="btn btn--primary btn--sm" download="gradle-version-guard-1.0.0.zip">
+                        ${Icons.download(13)} Download Plugin (.zip)
+                    </a>
                 </div>
             </div>
 
@@ -176,7 +198,7 @@ const Components = (() => {
                     <th>Library / Key</th>
                     <th>Unified Baseline</th>
                     <th>Status</th>
-                    ${projects.map(p => `<th>${escapeHtml(p)}</th>`).join("")}
+                    ${projectNames.map(p => `<th>${escapeHtml(p)}</th>`).join("")}
                     <th></th>
                 </tr></thead>
                 <tbody>${matrix.filter(item => {
@@ -189,10 +211,9 @@ const Components = (() => {
                         ? `<span class="badge--drift">⚠️ ${item.version_count} Versions</span>`
                         : `<span class="badge--match">✓ Aligned</span>`;
 
-                    const projectCells = projects.map(p => {
-                        // Find version for project p
+                    const projectCells = projectNames.map(p => {
                         let pVersion = "—";
-                        for (const [v, pList] of Object.entries(item.versions)) {
+                        for (const [v, pList] of Object.entries(item.versions || {})) {
                             if (pList.includes(p)) {
                                 pVersion = v;
                                 break;
@@ -230,121 +251,28 @@ const Components = (() => {
 
     // --- Libraries --------------------------------------------------
 
-    // --- Libraries --------------------------------------------------
-
-    function libraries(data, suites, viewMode = "suites") {
+    function libraries(data) {
         const allGroups = Object.entries(data || {}).sort((a, b) => b[1].total_size - a[1].total_size);
-        if (!allGroups.length && (!suites || !suites.length)) {
+        if (!allGroups.length) {
             return emptyState("No cached libraries found", "Dependencies will appear here after the first build.");
         }
 
-        // Calculate sprawl stats
-        let totalStaleBytes = 0;
-        let sprawlArtifactsCount = 0;
-        allGroups.forEach(([, g]) => {
-            totalStaleBytes += (g.stale_size || 0);
-            g.artifacts.forEach(a => {
-                if (a.has_drift) sprawlArtifactsCount++;
-            });
-        });
+        const totalArtifacts = allGroups.reduce((s, [, g]) => s + g.artifacts.length, 0);
+        const totalSize = allGroups.reduce((s, [, g]) => s + g.total_size, 0);
 
-        // Filter groups for table views
-        const groups = allGroups.filter(([, g]) => {
-            if (viewMode === "sprawl") return g.has_sprawl;
-            return true;
-        });
+        return `
+            <div class="section-header">
+                <h2>Libraries (${allGroups.length} Groups &middot; ${totalArtifacts} Artifacts &middot; ${formatSize(totalSize)})</h2>
+                <button class="btn btn--danger btn--sm" onclick="App.deleteSelected('lib-cb')">
+                    ${Icons.trash(14)} Delete Selected
+                </button>
+            </div>
 
-        const totalArtifacts = groups.reduce((s, [, g]) => s + g.artifacts.length, 0);
-        const totalSize = groups.reduce((s, [, g]) => s + g.total_size, 0);
+            <div class="search-box">
+                ${Icons.search(16)}
+                <input type="text" id="libSearch" placeholder="Filter by group or artifact (e.g. androidx, ktor, kotlin)..." oninput="App.filterLibs()">
+            </div>
 
-        // Render Framework Suites View
-        const suitesHtml = `
-            <div class="suites-container" id="suitesContainer">
-                ${(suites || []).map(s => {
-                    const versionsHtml = s.versions.map(v => {
-                        const inUseBadge = v.used_by_projects && v.used_by_projects.length > 0
-                            ? `<span class="project-tag">✓ In use: ${v.used_by_projects.map(p => escapeHtml(p)).join(", ")}</span>`
-                            : '';
-                        const statusBadge = v.is_latest
-                            ? `<span class="badge--latest">Latest</span>`
-                            : (v.is_stale ? `<span class="badge--stale">⚠️ Unused Duplicate</span>` : '');
-
-                        const canDelete = !v.is_latest && (!v.used_by_projects || v.used_by_projects.length === 0);
-
-                        return `
-                            <div class="suite-version-row">
-                                <div class="suite-version-info">
-                                    <span class="suite-version-tag">${escapeHtml(v.version)}</span>
-                                    ${statusBadge}
-                                    ${inUseBadge}
-                                    <span class="suite-version-meta">${v.size_fmt} &middot; ${v.artifact_count} artifacts</span>
-                                </div>
-                                <div class="action-cell">
-                                    <button class="btn btn--use btn--sm" onclick="App.showSuiteSnippet('${s.id}', '${escapeAttr(s.name)}', '${escapeAttr(v.version)}')">
-                                        ${Icons.code(14)} Get TOML
-                                    </button>
-                                    ${canDelete ? `
-                                        <button class="btn btn--danger btn--sm" title="Delete all artifacts for version ${escapeAttr(v.version)}"
-                                                onclick="App.deleteSuiteVersion('${escapeAttr(s.name)}', '${escapeAttr(v.version)}', '${escapeAttr(JSON.stringify(v.paths))}')">
-                                            ${Icons.trash(14)}
-                                        </button>
-                                    ` : ''}
-                                </div>
-                            </div>`;
-                    }).join("");
-
-                    // Find underlying groups/artifacts
-                    const underlyingArtifacts = [];
-                    for (const [gName, gInfo] of allGroups) {
-                        for (const art of gInfo.artifacts) {
-                            if (s.id === 'kotlin' && gName.includes('org.jetbrains.kotlin')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'compose_multiplatform' && (gName.includes('org.jetbrains.compose') || gName.includes('skiko'))) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'agp' && gName.includes('com.android.tools')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'ktor' && gName.includes('io.ktor')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'koin' && gName.includes('insert-koin')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'coil' && gName.includes('coil')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'androidx_compose' && gName.startsWith('androidx.compose.')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'androidx_core' && gName.startsWith('androidx.') && !gName.startsWith('androidx.compose.')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'firebase' && (gName.includes('firebase') || gName.includes('com.google.android.gms'))) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                            else if (s.id === 'square' && gName.includes('com.squareup')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
-                        }
-                    }
-
-                    return `
-                        <div class="suite-card" data-suite="${s.name.toLowerCase()} ${s.id}">
-                            <div class="suite-card-header">
-                                <div class="suite-info">
-                                    <div class="suite-icon">${s.icon || '📦'}</div>
-                                    <div class="suite-title">
-                                        <h3>${escapeHtml(s.name)}</h3>
-                                        <p>${escapeHtml(s.description || '')}</p>
-                                    </div>
-                                </div>
-                                <div class="suite-badges">
-                                    <span class="badge--match">${s.total_size_fmt}</span>
-                                    <span class="badge--cat" style="background:var(--bg-emphasis);color:var(--fg-muted);padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;">
-                                        ${s.artifact_count} artifacts combined
-                                    </span>
-                                    ${s.has_sprawl ? `<span class="badge--drift">⚠️ ${s.stale_size_fmt} duplicates</span>` : ''}
-                                </div>
-                            </div>
-
-                            <div class="suite-versions-list">
-                                ${versionsHtml}
-                            </div>
-
-                            <details class="suite-details">
-                                <summary>${Icons.chevronRight(13)} Inspect underlying ${underlyingArtifacts.length} Maven artifacts</summary>
-                                <div class="suite-details-body">
-                                    ${underlyingArtifacts.map(a => `<div>${escapeHtml(a)}</div>`).join("")}
-                                </div>
-                            </details>
-                        </div>`;
-                }).join("")}
-            </div>`;
-
-        // Render Raw Groups Table View
-        const groupsTableHtml = `
             <table class="data-table" id="libsTable">
                 <thead><tr>
                     <th><input type="checkbox" onchange="App.toggleAll(this,'lib-cb')"></th>
@@ -354,7 +282,7 @@ const Components = (() => {
                     <th>Category</th>
                     <th></th>
                 </tr></thead>
-                <tbody>${groups.map(([group, info]) => {
+                <tbody>${allGroups.map(([group, info]) => {
                     const versionCount = info.artifacts.reduce((s, a) => s + a.version_count, 0);
                     const groupRows = `
                         <tr class="lib-row" data-group="${group.toLowerCase()}">
@@ -365,109 +293,42 @@ const Components = (() => {
                                 </span>
                                 <strong>${group}</strong>
                                 <span class="cell-mono">(${info.artifacts.length})</span>
-                                ${info.has_sprawl ? `<span class="badge--drift" style="margin-left:6px;">⚠️ ${formatSize(info.stale_size)} stale</span>` : ''}
                             </td>
                             <td>${versionCount}</td>
                             <td class="cell-size">${info.total_size_fmt}</td>
                             <td>${sizeTag(info.total_size)}</td>
                             <td>
-                                <div class="action-cell">
-                                    ${info.has_sprawl ? `
-                                        <button class="btn btn--ghost btn--sm" title="Delete old versions in this group" onclick="App.deduplicateGroup('${escapeAttr(group)}')">
-                                            ${Icons.checkCheck(13)} Deduplicate
-                                        </button>
-                                    ` : ''}
-                                    <button class="btn btn--danger btn--sm" onclick="App.requestDelete('${escapeAttr(info.path)}','${escapeAttr(group)}')">
-                                        ${Icons.trash(14)}
-                                    </button>
-                                </div>
+                                <button class="btn btn--danger btn--sm" onclick="App.requestDelete('${escapeAttr(info.path)}','${escapeAttr(group)}')">
+                                    ${Icons.trash(14)}
+                                </button>
                             </td>
                         </tr>`;
 
                     const subRows = info.artifacts.flatMap(art =>
-                        art.versions.map(v => {
-                            const projectTags = art.used_in_projects && art.used_in_projects.length
-                                ? art.used_in_projects.map(p => `<span class="project-tag">${escapeHtml(p)}</span>`).join("")
-                                : "";
-
-                            const versionBadge = v.is_latest
-                                ? `<span class="badge--latest">Latest</span>`
-                                : (v.is_stale ? `<span class="badge--stale">Stale</span>` : '');
-
-                            return `
-                                <tr class="sub-row lib-row" data-group="${group.toLowerCase()}" data-parent="${escapeAttr(group)}">
-                                    <td></td>
-                                    <td class="cell-path" style="padding-left:52px">
-                                        ${art.name} : <strong>${v.version}</strong>
-                                        ${versionBadge}
-                                        ${projectTags}
-                                    </td>
-                                    <td>1</td>
-                                    <td class="cell-size">${v.size_fmt}</td>
-                                    <td></td>
-                                    <td>
-                                        <div class="action-cell">
-                                            <button class="btn btn--use btn--sm" onclick="App.showLibSnippet('${escapeAttr(group)}','${escapeAttr(art.name)}','${escapeAttr(v.version)}')">
-                                                ${Icons.code(14)} Use
-                                            </button>
-                                            <button class="btn btn--danger btn--sm" onclick="App.requestDelete('${escapeAttr(v.path)}','${escapeAttr(art.name + ":" + v.version)}')">
-                                                ${Icons.trash(14)}
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>`;
-                        })
+                        art.versions.map(v => `
+                            <tr class="sub-row lib-row" data-group="${group.toLowerCase()}" data-parent="${escapeAttr(group)}">
+                                <td></td>
+                                <td class="cell-path" style="padding-left:52px">
+                                    ${art.name} : <strong>${v.version}</strong>
+                                </td>
+                                <td>1</td>
+                                <td class="cell-size">${v.size_fmt}</td>
+                                <td></td>
+                                <td>
+                                    <div class="action-cell">
+                                        <button class="btn btn--use btn--sm" onclick="App.showLibSnippet('${escapeAttr(group)}','${escapeAttr(art.name)}','${escapeAttr(v.version)}')">
+                                            ${Icons.code(14)} Use
+                                        </button>
+                                        <button class="btn btn--danger btn--sm" onclick="App.requestDelete('${escapeAttr(v.path)}','${escapeAttr(art.name + ":" + v.version)}')">
+                                            ${Icons.trash(14)}
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>`)
                     ).join("");
                     return groupRows + subRows;
                 }).join("")}</tbody>
             </table>`;
-
-        return `
-            <div class="section-header">
-                <h2>Libraries & Frameworks &middot; ${suites ? suites.length : 0} Suites &middot; ${allGroups.length} Groups &middot; ${formatSize(totalSize)}</h2>
-                <div style="display:flex;gap:8px;">
-                    ${totalStaleBytes > 0 ? `
-                        <button class="btn btn--primary btn--sm" onclick="App.deduplicateAllLibs()">
-                            ${Icons.checkCheck(14)} Clean Stale Versions (${formatSize(totalStaleBytes)})
-                        </button>
-                    ` : ''}
-                    <button class="btn btn--danger btn--sm" onclick="App.deleteSelected('lib-cb')">
-                        ${Icons.trash(14)} Delete Selected
-                    </button>
-                </div>
-            </div>
-
-            <!-- View Mode Switcher -->
-            <div class="view-mode-bar">
-                <button class="view-mode-btn ${viewMode === 'suites' ? 'active' : ''}" onclick="App.setLibViewMode('suites')">
-                    ${Icons.layers(14)} Framework Suites (${suites ? suites.length : 0})
-                </button>
-                <button class="view-mode-btn ${viewMode === 'sprawl' ? 'active' : ''}" onclick="App.setLibViewMode('sprawl')">
-                    ${Icons.gitBranch(14)} Version Sprawl (${sprawlArtifactsCount})
-                </button>
-                <button class="view-mode-btn ${viewMode === 'all' ? 'active' : ''}" onclick="App.setLibViewMode('all')">
-                    ${Icons.box(14)} All Maven Groups (${allGroups.length})
-                </button>
-            </div>
-
-            ${totalStaleBytes > 0 && viewMode === 'sprawl' ? `
-                <div class="sprawl-banner">
-                    <div>
-                        <strong>⚠️ Reclaimable Duplicate Storage:</strong>
-                        ${sprawlArtifactsCount} libraries have older versions taking up <strong>${formatSize(totalStaleBytes)}</strong> of disk space.
-                    </div>
-                    <button class="btn btn--primary btn--sm" onclick="App.deduplicateAllLibs()">
-                        ${Icons.checkCheck(14)} Clean Old Versions (Keep Latest)
-                    </button>
-                </div>
-            ` : ''}
-
-            <div class="search-box">
-                ${Icons.search(16)}
-                <input type="text" id="libSearch" placeholder="Filter suites or artifacts (e.g. kotlin, compose, ktor, coil)..." oninput="App.filterLibs()">
-            </div>
-
-            ${viewMode === 'suites' ? suitesHtml : groupsTableHtml}`;
     }
 
     // --- Caches -----------------------------------------------------

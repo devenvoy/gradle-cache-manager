@@ -72,7 +72,8 @@ const App = (() => {
             btn.classList.toggle("active", btn.dataset.tab === tab));
         if (tab === "properties" && flagsData.length === 0) {
             await loadFlags(true);
-        } else if (tab === "alignment" && (!projectsData || !projectsData.projects)) {
+        } else if (tab === "alignment" && (!projectsData || !projectsData.projects || !projectsData.projects.length)) {
+            $("tabContent").innerHTML = Components.loading();
             await loadProjects(true);
         }
         renderTab();
@@ -89,7 +90,7 @@ const App = (() => {
         switch (currentTab) {
             case "distributions": target.innerHTML = Components.distributions(data.distributions); break;
             case "alignment":     target.innerHTML = Components.alignment(projectsData);            break;
-            case "libraries":     target.innerHTML = Components.libraries(data.libraries, data.suites, libViewMode); break;
+            case "libraries":     target.innerHTML = Components.libraries(data.libraries);         break;
             case "caches":        target.innerHTML = Components.caches(data.caches);               break;
             case "daemons":       target.innerHTML = Components.daemons(data.daemons);             break;
             case "konan":         target.innerHTML = Components.konan(data.konan);                 break;
@@ -134,10 +135,6 @@ const App = (() => {
 
     function filterLibs() {
         const q = ($("libSearch")?.value || "").toLowerCase();
-        document.querySelectorAll(".suite-card").forEach(card => {
-            const suiteText = ((card.dataset.suite || "") + " " + card.textContent).toLowerCase();
-            card.style.display = suiteText.includes(q) ? "" : "none";
-        });
         document.querySelectorAll(".lib-row").forEach(row => {
             const group = row.dataset.group || "";
             row.style.display = group.includes(q) ? "" : "none";
@@ -545,7 +542,7 @@ const App = (() => {
         try {
             const res = await api("projects");
             projectsData = res || {};
-            if (!silent && currentTab === "alignment") {
+            if (currentTab === "alignment") {
                 renderTab();
             }
         } catch (err) {
