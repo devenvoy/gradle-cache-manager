@@ -72,3 +72,19 @@ test-scan: ## Test /api/scan endpoint
 
 test-flags: ## Test /api/flags endpoint
 	curl -s http://localhost:$(PORT)/api/flags | python3 -m json.tool | head -n 30
+
+align-projects: ## 1-Click align all local projects to machine baseline
+	@curl -s -X POST http://localhost:$(PORT)/api/projects/align \
+		-H "Content-Type: application/json" \
+		-d '{"project_paths":["/Users/devanshpc/Developer/Linkora","/Users/devanshpc/Developer/My-Ration","/Users/devanshpc/Developer/NutriTrack","/Users/devanshpc/Developer/Zevva","/Users/devanshpc/Developer/finkeep"]}' | python3 -m json.tool
+
+prune-cache: ## Clean duplicate older library versions from cache
+	@curl -s -X POST http://localhost:$(PORT)/api/libraries/deduplicate \
+		-H "Content-Type: application/json" \
+		-d '{}' | python3 -m json.tool
+
+build-plugin: ## Build the Android Studio plugin .zip distribution
+	@echo "Building Android Studio Plugin (Gradle Version Guard)..."
+	cd plugins/android-studio-plugin && ./gradlew buildPlugin
+	@echo "Plugin build complete! Distribution zip is in plugins/android-studio-plugin/build/distributions/"
+

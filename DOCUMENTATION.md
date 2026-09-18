@@ -247,3 +247,95 @@ Fetches and imports flags from a remote URL.
   "count": 12
 }
 ```
+
+### `GET /api/projects`
+Scans local workspace (`~/Developer`), parses version catalogs and wrapper configurations, and returns a cross-project version drift matrix.
+**Response**:
+```json
+{
+  "projects": ["Linkora", "My-Ration", "NutriTrack", "Zevva", "finkeep"],
+  "total_drifts": 31,
+  "matrix": [
+    {
+      "key": "kotlin",
+      "has_drift": true,
+      "version_count": 3,
+      "versions": { "2.3.10": ["Linkora", "My-Ration"], "2.4.0": ["NutriTrack", "finkeep"], "2.4.10": ["Zevva"] },
+      "recommended": "2.4.10",
+      "is_priority": true
+    }
+  ],
+  "wrapper_drift": { "has_drift": true, "recommended": "9.7.1" },
+  "baseline": { ... },
+  "enforcer_enabled": false
+}
+```
+
+### `GET /api/baseline`
+Returns the active machine golden baseline for dependencies, wrapper distribution, and performance properties.
+
+### `POST /api/projects/align`
+Applies unified baseline versions to specified projects, generating automated `.bak` backups before modifying files.
+**Request**:
+```json
+{
+  "project_paths": ["/Users/devanshpc/Developer/NutriTrack"],
+  "target_versions": { "kotlin": "2.4.10", "agp": "9.3.2" },
+  "align_wrapper": true,
+  "target_wrapper": "9.7.1",
+  "align_properties": true
+}
+```
+**Response**:
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "success": true,
+      "project": "NutriTrack",
+      "changes": ["libs.versions.toml: kotlin = 2.4.0 -> 2.4.10"],
+      "backups": ["/Users/.../libs.versions.toml.bak.1789708..."]
+    }
+  ]
+}
+```
+
+### `POST /api/libraries/deduplicate`
+Finds and deletes older/stale versions across cached libraries in `~/.gradle/caches/modules-2/files-2.1/`, preserving the latest version of each artifact.
+**Request**:
+```json
+{
+  "scope": "org.jetbrains.kotlin" // optional group scope, omit for global deduplication
+}
+```
+**Response**:
+```json
+{
+  "success": true,
+  "deleted": 401,
+  "freed": 102760448,
+  "freed_fmt": "98.0 MB"
+}
+```
+
+### `POST /api/enforcer/toggle`
+Toggles the global machine-wide Gradle `init.d` version enforcement script (`~/.gradle/init.d/align-cache-versions.gradle.kts`).
+**Response**:
+```json
+{
+  "enabled": true
+}
+```
+
+---
+
+## 5. Android Studio Plugin Architecture (`Gradle Version Guard`)
+
+Located in `plugins/android-studio-plugin/`:
+- **PreSyncStartupActivity**: Registered with IntelliJ's `postStartupActivity` extension point. Executes on project initialization.
+- **BaselineService**: Queries `http://localhost:8484/api/baseline` with transparent disk fallback to `~/.gradle/gcm-baseline.json`.
+- **ProjectVersionChecker**: Compares project dependencies in `gradle/libs.versions.toml`, wrapper in `gradle-wrapper.properties`, and flags in `gradle.properties` against the machine baseline.
+- **PreSyncDialog**: Interactive Swing dialog based on `DialogWrapper` providing a diff table of mismatched versions with selection toggles.
+- **VersionAligner**: Performs atomic in-place file modifications with `.bak` safety backups and triggers virtual file system refresh (`LocalFileSystem.getInstance().refresh(true)`).
+

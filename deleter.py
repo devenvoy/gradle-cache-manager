@@ -76,3 +76,28 @@ def stop_daemons() -> str:
             continue
 
     return "No running Gradle daemons found, or the gradle binary is not on PATH."
+
+
+def deduplicate_libraries(scope: str = None) -> dict:
+    """
+    Find all stale / older versions across cached libraries and delete them,
+    keeping only the latest version of each artifact intact.
+    If scope is provided (e.g. 'org.jetbrains.kotlin'), only deduplicates within that group.
+    """
+    from scanner import scan_libraries
+    libs = scan_libraries()
+    stale_paths = []
+
+    for group_name, group_info in libs.items():
+        if scope and group_name != scope:
+            continue
+        for artifact in group_info["artifacts"]:
+            for v in artifact["versions"]:
+                if v.get("is_stale"):
+                    stale_paths.append(v["path"])
+
+    if not stale_paths:
+        return {"success": True, "deleted": 0, "freed": 0, "freed_fmt": "0 B", "message": "No duplicate stale versions found."}
+
+    return delete_paths(stale_paths)
+

@@ -28,6 +28,11 @@ const App = (() => {
     let flagCategory = "";          // Active category filter (empty = all)
     let flagSearch = "";            // Current search query
 
+    // Projects & Alignment state
+    let projectsData = {};          // Payload from /api/projects
+    let alignFilter = "drift";      // 'drift' | 'priority' | 'all'
+    let libViewMode = "suites";     // 'suites' | 'sprawl' | 'all'
+
     // --- DOM refs ----------------------------------------------------
 
     const $ = (id) => document.getElementById(id);
@@ -67,6 +72,8 @@ const App = (() => {
             btn.classList.toggle("active", btn.dataset.tab === tab));
         if (tab === "properties" && flagsData.length === 0) {
             await loadFlags(true);
+        } else if (tab === "alignment" && (!projectsData || !projectsData.projects)) {
+            await loadProjects(true);
         }
         renderTab();
     }
@@ -81,7 +88,8 @@ const App = (() => {
         const target = $("tabContent");
         switch (currentTab) {
             case "distributions": target.innerHTML = Components.distributions(data.distributions); break;
-            case "libraries":     target.innerHTML = Components.libraries(data.libraries);         break;
+            case "alignment":     target.innerHTML = Components.alignment(projectsData);            break;
+            case "libraries":     target.innerHTML = Components.libraries(data.libraries, data.suites, libViewMode); break;
             case "caches":        target.innerHTML = Components.caches(data.caches);               break;
             case "daemons":       target.innerHTML = Components.daemons(data.daemons);             break;
             case "konan":         target.innerHTML = Components.konan(data.konan);                 break;
@@ -125,7 +133,11 @@ const App = (() => {
     // --- Library search filter --------------------------------------
 
     function filterLibs() {
-        const q = $("libSearch").value.toLowerCase();
+        const q = ($("libSearch")?.value || "").toLowerCase();
+        document.querySelectorAll(".suite-card").forEach(card => {
+            const suiteText = ((card.dataset.suite || "") + " " + card.textContent).toLowerCase();
+            card.style.display = suiteText.includes(q) ? "" : "none";
+        });
         document.querySelectorAll(".lib-row").forEach(row => {
             const group = row.dataset.group || "";
             row.style.display = group.includes(q) ? "" : "none";
@@ -139,6 +151,21 @@ const App = (() => {
     function requestDelete(path, name) {
         pendingDelete = [{ path, name }];
         showModal(`Are you sure you want to delete <strong>${name}</strong>? This action cannot be undone.`);
+    }
+
+    function requestDeleteMultiple(paths, name) {
+        pendingDelete = paths.map(p => ({ path: p, name: p.split("/").pop() }));
+        showModal(`Are you sure you want to delete <strong>${name}</strong>? This will remove all associated cached artifacts across the suite and cannot be undone.`);
+    }
+
+    function deleteSuiteVersion(suiteName, version, pathsJson) {
+        try {
+            const paths = typeof pathsJson === "string" ? JSON.parse(pathsJson) : pathsJson;
+            if (!paths || !paths.length) return;
+            requestDeleteMultiple(paths, `${suiteName} v${version} (${paths.length} artifacts)`);
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     function deleteSelected(className) {
@@ -183,6 +210,23 @@ const App = (() => {
     // ================================================================
     // SNIPPET MODALS
     // ================================================================
+
+    function showSuiteSnippet(suiteId, suiteName, version) {
+        const suite = (data.suites || []).find(s => s.id === suiteId);
+        let snippet = "";
+        if (suite) {
+            const vObj = suite.versions.find(v => v.version === version);
+            if (vObj) snippet = vObj.toml_snippet;
+        }
+        if (!snippet) {
+            snippet = `[versions]\n${suiteId} = "${version}"\n`;
+        }
+        snippetFormats = null;
+        activeFormat = null;
+        const backdrop = $("snippetBackdrop");
+        backdrop.innerHTML = Components.suiteSnippetModal(suiteId, suiteName, version, snippet);
+        backdrop.classList.add("show");
+    }
 
     function showWrapperSnippet(distName) {
         snippetFormats = null;
@@ -494,6 +538,126 @@ const App = (() => {
     }
 
     // ================================================================
+    // PROJECTS & ALIGNMENT
+    // ================================================================
+
+    async function loadProjects(silent = false) {
+        try {
+            const res = await api("projects");
+            projectsData = res || {};
+            if (!silent && currentTab === "alignment") {
+                renderTab();
+            }
+        } catch (err) {
+            showToast("Failed to load projects: " + err.message, "error");
+        }
+    }
+
+    function getAlignFilter() { return alignFilter; }
+    function setAlignFilter(f) { alignFilter = f; renderTab(); }
+
+    function getLibViewMode() { return libViewMode; }
+    function setLibViewMode(m) { libViewMode = m; renderTab(); }
+
+    async function alignAllProjects() {
+        if (!projectsData || !projectsData.projects || !projectsData.projects.length) return;
+        const count = projectsData.projects.length;
+        if (!confirm(`Apply unified baseline versions to all ${count} projects?\n\nBackup copies (.bak) will be created automatically for safety.`)) {
+            return;
+        }
+
+        showToast("Aligning all projects to unified baseline...", "info");
+        try {
+            const res = await api("projects/align", "POST", {
+                project_paths: projectsData.projects.map(p => typeof p === "string" ? `/Users/devanshpc/Developer/${p}` : p.path),
+                target_versions: projectsData.baseline?.versions || {},
+                target_wrapper: projectsData.baseline?.wrapper?.version,
+                align_wrapper: true,
+                align_properties: true
+            });
+
+            if (res.success) {
+                showToast(`Successfully aligned all ${count} projects!`);
+                await loadProjects(true);
+                await refreshAll();
+            } else {
+                showToast("Alignment failed: " + (res.error || "Unknown"), "error");
+            }
+        } catch (err) {
+            showToast("Error: " + err.message, "error");
+        }
+    }
+
+    async function alignSingleKey(key, targetVersion) {
+        if (!projectsData || !projectsData.projects) return;
+        showToast(`Aligning ${key} to ${targetVersion}...`, "info");
+        try {
+            const res = await api("projects/align", "POST", {
+                project_paths: projectsData.projects.map(p => typeof p === "string" ? `/Users/devanshpc/Developer/${p}` : p.path),
+                target_versions: { [key]: targetVersion },
+                align_wrapper: false,
+                align_properties: false
+            });
+
+            if (res.success) {
+                showToast(`Aligned ${key} = ${targetVersion}`);
+                await loadProjects(true);
+                renderTab();
+            }
+        } catch (err) {
+            showToast("Failed: " + err.message, "error");
+        }
+    }
+
+    async function toggleEnforcer() {
+        showToast("Toggling global enforcer...", "info");
+        try {
+            const res = await api("enforcer/toggle", "POST");
+            if (projectsData) {
+                projectsData.enforcer_enabled = res.enabled;
+            }
+            showToast(res.enabled ? "Global init.d Enforcer ENABLED" : "Global init.d Enforcer DISABLED");
+            renderTab();
+        } catch (err) {
+            showToast("Failed: " + err.message, "error");
+        }
+    }
+
+    async function deduplicateAllLibs() {
+        if (!confirm("Clean all older/duplicate versions from cache?\n\nThe latest version of every library will be kept intact.")) {
+            return;
+        }
+        showToast("Deduplicating libraries...", "info");
+        try {
+            const res = await api("libraries/deduplicate", "POST");
+            if (res.success) {
+                showToast(`Freed ${res.freed_fmt}, removed ${res.deleted} older version(s)`);
+                await refreshAll();
+            } else {
+                showToast(res.message || "Failed", "error");
+            }
+        } catch (err) {
+            showToast("Deduplication error: " + err.message, "error");
+        }
+    }
+
+    async function deduplicateGroup(group) {
+        if (!confirm(`Delete older versions in "${group}"? The latest version will be preserved.`)) {
+            return;
+        }
+        showToast(`Deduplicating ${group}...`, "info");
+        try {
+            const res = await api("libraries/deduplicate", "POST", { scope: group });
+            if (res.success) {
+                showToast(`Freed ${res.freed_fmt} in ${group}`);
+                await refreshAll();
+            }
+        } catch (err) {
+            showToast("Failed: " + err.message, "error");
+        }
+    }
+
+    // ================================================================
     // DAEMON CONTROL
     // ================================================================
 
@@ -526,8 +690,9 @@ const App = (() => {
             }
         });
 
-        // Preload flags in background
+        // Preload flags and projects in background
         loadFlags(true);
+        loadProjects(true);
 
         refreshAll();
     }
@@ -544,14 +709,27 @@ const App = (() => {
         // Delete
         requestDelete,
         deleteSelected,
+        deleteSuiteVersion,
         closeModal,
         confirmDelete,
         // Snippets
+        showSuiteSnippet,
         showWrapperSnippet,
         showLibSnippet,
         switchFormat,
         copySnippet,
         closeSnippet,
+        // Projects & Alignment
+        loadProjects,
+        getAlignFilter,
+        setAlignFilter,
+        getLibViewMode,
+        setLibViewMode,
+        alignAllProjects,
+        alignSingleKey,
+        toggleEnforcer,
+        deduplicateAllLibs,
+        deduplicateGroup,
         // Properties Builder
         loadFlags,
         filterFlags,

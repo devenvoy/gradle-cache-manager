@@ -1,132 +1,116 @@
-# Gradle Cache Manager
+# Gradle Cache Manager & Version Guard
 
-A modern, lightweight, zero-dependency web dashboard to inspect, manage, and optimize your local Gradle environment. Designed specifically for Android, Kotlin Multiplatform (KMP), and Compose developers who need to keep their disk usage clean, manage shared distributions, and generate optimized build properties.
+A modern, high-performance workspace tool to inspect, align, and optimize your local Gradle environment. Designed specifically for Android and Kotlin Multiplatform (KMP) developers to **enforce identical library versions across all projects**, eliminate duplicate cache downloads, and reclaim gigabytes of disk storage on your main drive.
 
 ---
 
-## Features
+## Key Pillars
 
-### 1. 📦 Gradle Wrapper Distribution Manager
+### 1. 🔄 Cross-Project Version Alignment Hub
+- **Multi-Project Scanner**: Automatically discovers all Gradle projects in `~/Developer` (e.g. `Linkora`, `My-Ration`, `Zevva`, `finkeep`, `NutriTrack`).
+- **Drift Matrix**: Parses `gradle/libs.versions.toml` across projects to detect mismatches in Kotlin, AGP, Compose Multiplatform, Ktor, Koin, Coroutines, etc.
+- **1-Click Machine Alignment**: Syncs all your projects to a unified, recommended baseline with automatic `.bak` safety backups.
+- **Global `init.d` Enforcer**: Optional machine-wide script (`~/.gradle/init.d/align-cache-versions.gradle.kts`) that forces Gradle builds anywhere on your computer to resolve dependencies using the machine baseline, preventing background re-downloads.
+
+### 2. 🛡️ Android Studio Plugin ("Gradle Version Guard")
+Located in `plugins/android-studio-plugin/`:
+- **Pre-Sync Interception**: Hooks into Android Studio when a project opens or before Gradle Sync begins.
+- **Pre-Sync Alignment Dialog**: Compares project versions against your machine baseline (`~/.gradle/gcm-baseline.json` or local daemon):
+  - Lists all mismatched library versions (e.g. Kotlin `2.4.0` vs Machine `2.4.10`).
+  - Recommends the matching Gradle Wrapper distribution.
+  - Suggests missing performance & caching flags in `gradle.properties`.
+- **1-Click "Align & Sync"**: Safely updates `libs.versions.toml`, `gradle-wrapper.properties`, and `gradle.properties` before syncing so Gradle reuses existing cached jars!
+
+### 3. 🧹 Clean Libraries Hub & 1-Click Deduplication
+- **Direct vs Transitive Filtering**:
+  - **Direct / Frameworks (Default)**: Shows high-level libraries you actually declare in your projects (`AndroidX`, `Kotlin`, `Compose Multiplatform`, `Ktor`, `Koin`, `Room`, `Firebase`).
+  - **Tucks Away Transitive Noise**: Low-level runtime jars (`bouncycastle`, `asm`, `guava`) and parent POMs (`error_prone_parent`, `project`) are hidden from clutter.
+- **Project Presence Badges**: Every cached artifact displays which of your local projects (`NutriTrack`, `Zevva`, etc.) currently use it.
+- **1-Click "Clean Old Versions (Keep Latest)"**: Automatically deletes older duplicate version directories while keeping the latest version of each artifact intact, instantly reclaiming hundreds of megabytes.
+
+### 4. 📦 Gradle Wrapper Distribution Manager
 - View all downloaded Gradle wrapper versions in `~/.gradle/wrapper/dists/`.
-- Inspect disk usage and last-modified dates per version.
-- **1-Click "Use" Generator**: Generates clean, ready-to-paste `gradle-wrapper.properties` configuration for any downloaded version so all your projects can share the same distribution.
-- Safely delete legacy or unused wrapper versions to free gigabytes of disk space.
+- 1-Click "Use" generator to copy ready-to-paste `gradle-wrapper.properties` configuration.
+- Safely delete unused legacy wrapper versions.
 
-### 2. 📚 Cached Libraries & Dependency Inspector
-- Browse every cached library artifact in `~/.gradle/caches/modules-2/files-2.1/` grouped by Maven group ID.
-- Search dependencies in real-time across group, artifact, and version names.
-- Expandable views showing every version, individual sizes, and size category badges.
-- **1-Click "Use" Dependency Exporter**: Generates instant copyable code snippets for:
-  - **Kotlin DSL** (`implementation("group:artifact:version")`)
-  - **Groovy DSL** (`implementation 'group:artifact:version'`)
-  - **Version Catalog TOML** (`libs.versions.toml` with `[versions]` + `[libraries]`)
-  - **Maven XML** (`<dependency>` block)
-- Bulk-select and delete obsolete library versions.
-
-### 3. 💾 Build Cache, Daemon & Native Storage Control
-- **Caches**: Monitor transform caches, build cache (`build-cache-1`), and metadata caches.
-- **Daemons**: View daemon logs per Gradle version, with 1-click **Stop All Daemons** action.
-- **Kotlin/Native**: Inspect and clean the `~/.konan` toolchain and compiler caches used by KMP targets.
-
-### 4. ⚙️ Interactive `gradle.properties` Builder
-- 50+ curated flags covering:
-  - **Gradle Core & JVM**: parallel execution, build cache, configuration cache, daemon timeout, heap memory.
-  - **Android (AGP)**: AndroidX, non-transitive R classes, Jetifier, build feature toggles, K2 UAST lint.
-  - **Kotlin & KMP**: daemon memory, incremental compilation, multiplatform layouts, compiler caching.
-  - **Compose Multiplatform**: UIKit (iOS), macOS, Web Canvas, Wasm, resource generator accessors.
-  - **Jetpack Compose**: Android Compose build features.
-  - **KSP & Room**: incremental processing, KSP2, Room schema location, Kotlin code generation.
-  - **CI & Environment**: daemon performance monitoring, dependency verification.
-- **Real-Time Search & Category Filters**: Search by flag key or description, filter with category chips.
-- **Detailed Explanations & Official Documentation Links** on every flag card.
-- **1-Click "Select Recommended"**: Automatically selects production-ready flags for peak performance.
-- **Live Output Panel**: Formats flags into organized comment headers with 1-click **Copy to Clipboard** and **Download `gradle.properties`**.
-
-### 5. 🔄 Dynamic Flag Updates & Custom Flags
-- **Add Custom Flags**: Register any new or proprietary property key, category, description, and default value. Persisted to `~/.gradle/gcm-custom-flags.json`.
-- **Sync via Remote URL**: Fetch and import latest flags dynamically from any raw JSON documentation URL.
-- **Import JSON**: Paste custom flag JSON arrays to update or expand your team's flag database.
+### 5. ⚙️ Interactive `gradle.properties` Builder
+- 50+ curated flags covering Gradle Core, JVM, Android (AGP), Kotlin, Compose Multiplatform, KSP, Room, and CI.
+- Type-aware inputs, search, category chips, and live preview.
+- 1-Click "Select Recommended", copy to clipboard, or download `gradle.properties`.
+- Dynamic sync/import from remote documentation URLs or JSON.
 
 ---
 
 ## Quick Start
 
-### Requirements
-- Python 3.9+ (No external pip dependencies required — uses pure Python standard library `http.server`, `urllib`, `pathlib`, `json`).
-- macOS, Linux, or Windows (WSL).
-
-### Running with Make
+### Running the Web Dashboard
 
 ```bash
-# View available commands
+# View all commands
 make help
 
-# Run in foreground (opens browser to http://localhost:8484)
+# Run in foreground and open browser (http://localhost:8484)
 make run
 
-# Run in background daemon mode
+# Start as background daemon
 make start
 
 # Check status
 make status
 
-# Stop background server
-make stop
+# 1-Click align all local projects from terminal
+make align-projects
 
-# Restart server
-make restart
-
-# Clean temp files and bytecode
-make clean
+# 1-Click prune older duplicate library versions from cache
+make prune-cache
 ```
 
-### Running Directly with Python
+### Installing the Android Studio Plugin
 
 ```bash
-# Start server (default port 8484)
-python3 gradle_cache_manager.py
-
-# Custom port
-python3 gradle_cache_manager.py --port 9090
-
-# Without auto-opening browser
-python3 gradle_cache_manager.py --no-browser
+# Build the plugin distribution zip
+make build-plugin
 ```
 
-Open **[http://localhost:8484](http://localhost:8484)** in your web browser.
+Then in **Android Studio / IntelliJ IDEA**:
+1. Open **Settings / Preferences** (`Cmd + ,`).
+2. Go to **Plugins** -> click the ⚙️ gear icon -> **Install Plugin from Disk...**.
+3. Select `plugins/android-studio-plugin/build/distributions/gradle-version-guard-1.0.0.zip`.
+4. Restart Android Studio.
+5. Next time you open any project, **Gradle Version Guard** will automatically check for version drift and offer 1-click alignment!
 
 ---
 
-## Project Structure
+## Architecture & Project Layout
 
 ```
 gradle-cache-manager/
-├── Makefile                  # Build and lifecycle commands
-├── README.md                 # Project overview and user guide
-├── DOCUMENTATION.md          # Technical architecture & API reference
-├── gradle_cache_manager.py   # HTTP server routing and daemon entrypoint
-├── scanner.py                # Filesystem scanner for Gradle & Konan directories
-├── deleter.py                # Guarded deletion operations with path safety assertions
-├── flags_registry.py         # Curated flag catalog & dynamic sync/import logic
+├── Makefile                       # Control commands (run, start, align, prune, build-plugin)
+├── README.md                      # Project documentation
+├── DOCUMENTATION.md               # Technical specifications & API reference
+├── gradle_cache_manager.py        # Python server & REST API router
+├── project_scanner.py             # Multi-project scanner, drift matrix & baseline engine
+├── init_enforcer.py               # Global ~/.gradle/init.d enforcer generator
+├── scanner.py                     # Cache inspection with ecosystem & SemVer analysis
+├── deleter.py                     # Safety-guarded deletion and library deduplication
+├── flags_registry.py              # 50+ flags catalog & dynamic sync/import logic
 ├── templates/
-│   └── index.html            # Minimal semantic HTML shell
-└── static/
-    ├── style.css             # GitHub Dark theme tokens (no purple, professional styling)
-    ├── icons.js              # SVG stroke icon library (Lucide-style, zero emojis)
-    ├── components.js         # Pure HTML render functions (data -> HTML)
-    └── app.js                # State management, API calls, event handlers, and modals
+│   └── index.html                 # Semantic HTML shell with tab navigation
+├── static/
+│   ├── style.css                  # GitHub Dark theme with drift matrix & badge styling
+│   ├── icons.js                   # SVG stroke icons (Lucide-style)
+│   ├── components.js              # Pure render functions (Alignment, Libraries, Properties)
+│   └── app.js                     # State management, API calls, and event handlers
+└── plugins/
+    └── android-studio-plugin/     # Android Studio / IntelliJ Plugin
+        ├── build.gradle.kts       # IntelliJ Platform plugin build
+        └── src/main/kotlin/       # PreSyncDialog, ProjectVersionChecker, VersionAligner
 ```
 
 ---
 
-## Safety & Security
+## Safety Guarantees
 
-- **Strict Path Isolation**: All delete operations are validated in `deleter.py` through `_assert_safe()`. The application strictly refuses to delete any file or directory outside `~/.gradle` and `~/.konan`.
-- **Zero Dependencies**: Built entirely with Python's built-in libraries and vanilla JavaScript, eliminating supply-chain vulnerabilities.
-- **Confirmation Modals**: Every deletion requires explicit user confirmation via dialog modals before executing.
-
----
-
-## License
-
-MIT License. Free to use, modify, and distribute.
+- **Guarded Path Deletion**: The backend verifies all deletion paths against `_ALLOWED_ROOTS` (`~/.gradle` and `~/.konan`), strictly rejecting any outside paths.
+- **Automated Backup Copies**: Modifying `libs.versions.toml`, `gradle-wrapper.properties`, or `gradle.properties` always generates a timestamped `.bak` file alongside the original.
+- **Zero Heavy Dependencies**: The core dashboard runs on Python 3 standard libraries with no node_modules or pip requirements.

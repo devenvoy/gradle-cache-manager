@@ -92,27 +92,259 @@ const Components = (() => {
             </table>`;
     }
 
-    // --- Libraries --------------------------------------------------
+    // --- Projects & Alignment Hub -----------------------------------
 
-    function libraries(data) {
-        const groups = Object.entries(data || {}).sort((a, b) => b[1].total_size - a[1].total_size);
-        if (!groups.length) {
-            return emptyState("No cached libraries found", "Dependencies will appear here after the first build.");
+    function alignment(data) {
+        if (!data || !data.projects || !data.projects.length) {
+            return emptyState("No Gradle projects found in ~/Developer", "Add projects with gradle/ directory to compare versions.");
         }
-        const totalArtifacts = groups.reduce((s, [, g]) => s + g.artifacts.length, 0);
-        const totalSize = groups.reduce((s, [, g]) => s + g.total_size, 0);
+
+        const projects = data.projects;
+        const matrix = data.matrix || [];
+        const drifts = matrix.filter(m => m.has_drift);
+        const enforcerOn = !!data.enforcer_enabled;
+        const totalDrifts = data.total_drifts || drifts.length;
 
         return `
             <div class="section-header">
-                <h2>${groups.length} Groups &middot; ${totalArtifacts} Artifacts &middot; ${formatSize(totalSize)}</h2>
-                <button class="btn btn--danger btn--sm" onclick="App.deleteSelected('lib-cb')">
-                    ${Icons.trash(14)} Delete Selected
+                <h2>Cross-Project Version Alignment (${projects.length} Projects)</h2>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn--primary btn--sm" onclick="App.alignAllProjects()">
+                        ${Icons.checkCheck(14)} Align All Projects to Baseline
+                    </button>
+                    <button class="btn btn--ghost btn--sm" onclick="App.deduplicateAllLibs()">
+                        ${Icons.trash(14)} Clean Stale Cache Versions
+                    </button>
+                </div>
+            </div>
+
+            <!-- Alignment Status Banner -->
+            <div class="alignment-banner">
+                <div class="alignment-banner-text">
+                    <h3>${Icons.gitBranch(18)} ${totalDrifts > 0 ? `${totalDrifts} Version Mismatches Detected` : 'All Projects Are Aligned!'}</h3>
+                    <p>
+                        ${totalDrifts > 0
+                            ? `Your projects use different versions of key libraries. Aligning them forces all projects to share the exact same cached jars on your main drive.`
+                            : `All ${projects.length} projects share the same library versions and cached dependencies. Zero duplicate storage waste.`
+                        }
+                    </p>
+                </div>
+                <div class="alignment-banner-actions">
+                    <button class="btn btn--primary" onclick="App.alignAllProjects()">
+                        ${Icons.checkCheck(14)} Sync All to Baseline
+                    </button>
+                </div>
+            </div>
+
+            <!-- Global init.d Enforcer Card -->
+            <div class="enforcer-card">
+                <div class="enforcer-card-info">
+                    ${Icons.shield(20)}
+                    <div>
+                        <strong>Machine-Wide Gradle init.d Enforcer</strong>
+                        <div style="font-size:12px;color:var(--fg-muted);">
+                            Automatically forces all Gradle builds on this computer to resolve dependencies using the machine baseline.
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span class="enforcer-status-badge ${enforcerOn ? 'enforcer-status-badge--on' : 'enforcer-status-badge--off'}">
+                        ${enforcerOn ? Icons.check(12) + ' Active' : Icons.x(12) + ' Disabled'}
+                    </span>
+                    <button class="btn btn--ghost btn--sm" onclick="App.toggleEnforcer()">
+                        ${enforcerOn ? 'Disable Enforcer' : 'Enable Enforcer'}
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter chips -->
+            <div class="chip-bar">
+                <button class="chip ${App.getAlignFilter() === 'drift' ? 'active' : ''}" onclick="App.setAlignFilter('drift')">
+                    ⚠️ Mismatches Only (${drifts.length})
+                </button>
+                <button class="chip ${App.getAlignFilter() === 'priority' ? 'active' : ''}" onclick="App.setAlignFilter('priority')">
+                    ⭐ Key Frameworks (${matrix.filter(m => m.is_priority).length})
+                </button>
+                <button class="chip ${App.getAlignFilter() === 'all' ? 'active' : ''}" onclick="App.setAlignFilter('all')">
+                    All Dependencies (${matrix.length})
                 </button>
             </div>
-            <div class="search-box">
-                ${Icons.search(16)}
-                <input type="text" id="libSearch" placeholder="Filter by group (e.g. androidx, ktor, kotlin)..." oninput="App.filterLibs()">
-            </div>
+
+            <!-- Drift Matrix Table -->
+            <table class="data-table">
+                <thead><tr>
+                    <th>Library / Key</th>
+                    <th>Unified Baseline</th>
+                    <th>Status</th>
+                    ${projects.map(p => `<th>${escapeHtml(p)}</th>`).join("")}
+                    <th></th>
+                </tr></thead>
+                <tbody>${matrix.filter(item => {
+                    const f = App.getAlignFilter();
+                    if (f === 'drift') return item.has_drift;
+                    if (f === 'priority') return item.is_priority;
+                    return true;
+                }).map(item => {
+                    const statusHtml = item.has_drift
+                        ? `<span class="badge--drift">⚠️ ${item.version_count} Versions</span>`
+                        : `<span class="badge--match">✓ Aligned</span>`;
+
+                    const projectCells = projects.map(p => {
+                        // Find version for project p
+                        let pVersion = "—";
+                        for (const [v, pList] of Object.entries(item.versions)) {
+                            if (pList.includes(p)) {
+                                pVersion = v;
+                                break;
+                            }
+                        }
+                        if (pVersion === "—") return `<td class="cell-mono" style="color:var(--fg-subtle);">${pVersion}</td>`;
+                        const isMatch = pVersion === item.recommended;
+                        return `
+                            <td>
+                                <span class="${isMatch ? 'badge--match' : 'badge--drift'}">${escapeHtml(pVersion)}</span>
+                            </td>`;
+                    }).join("");
+
+                    return `
+                        <tr>
+                            <td class="cell-name">
+                                <strong>${escapeHtml(item.key)}</strong>
+                            </td>
+                            <td>
+                                <strong style="color:var(--accent);font-family:var(--font-mono);font-size:13px;">${escapeHtml(item.recommended)}</strong>
+                            </td>
+                            <td>${statusHtml}</td>
+                            ${projectCells}
+                            <td>
+                                ${item.has_drift ? `
+                                    <button class="btn btn--use btn--sm" onclick="App.alignSingleKey('${escapeAttr(item.key)}','${escapeAttr(item.recommended)}')">
+                                        Align
+                                    </button>
+                                ` : ''}
+                            </td>
+                        </tr>`;
+                }).join("")}</tbody>
+            </table>`;
+    }
+
+    // --- Libraries --------------------------------------------------
+
+    // --- Libraries --------------------------------------------------
+
+    function libraries(data, suites, viewMode = "suites") {
+        const allGroups = Object.entries(data || {}).sort((a, b) => b[1].total_size - a[1].total_size);
+        if (!allGroups.length && (!suites || !suites.length)) {
+            return emptyState("No cached libraries found", "Dependencies will appear here after the first build.");
+        }
+
+        // Calculate sprawl stats
+        let totalStaleBytes = 0;
+        let sprawlArtifactsCount = 0;
+        allGroups.forEach(([, g]) => {
+            totalStaleBytes += (g.stale_size || 0);
+            g.artifacts.forEach(a => {
+                if (a.has_drift) sprawlArtifactsCount++;
+            });
+        });
+
+        // Filter groups for table views
+        const groups = allGroups.filter(([, g]) => {
+            if (viewMode === "sprawl") return g.has_sprawl;
+            return true;
+        });
+
+        const totalArtifacts = groups.reduce((s, [, g]) => s + g.artifacts.length, 0);
+        const totalSize = groups.reduce((s, [, g]) => s + g.total_size, 0);
+
+        // Render Framework Suites View
+        const suitesHtml = `
+            <div class="suites-container" id="suitesContainer">
+                ${(suites || []).map(s => {
+                    const versionsHtml = s.versions.map(v => {
+                        const inUseBadge = v.used_by_projects && v.used_by_projects.length > 0
+                            ? `<span class="project-tag">✓ In use: ${v.used_by_projects.map(p => escapeHtml(p)).join(", ")}</span>`
+                            : '';
+                        const statusBadge = v.is_latest
+                            ? `<span class="badge--latest">Latest</span>`
+                            : (v.is_stale ? `<span class="badge--stale">⚠️ Unused Duplicate</span>` : '');
+
+                        const canDelete = !v.is_latest && (!v.used_by_projects || v.used_by_projects.length === 0);
+
+                        return `
+                            <div class="suite-version-row">
+                                <div class="suite-version-info">
+                                    <span class="suite-version-tag">${escapeHtml(v.version)}</span>
+                                    ${statusBadge}
+                                    ${inUseBadge}
+                                    <span class="suite-version-meta">${v.size_fmt} &middot; ${v.artifact_count} artifacts</span>
+                                </div>
+                                <div class="action-cell">
+                                    <button class="btn btn--use btn--sm" onclick="App.showSuiteSnippet('${s.id}', '${escapeAttr(s.name)}', '${escapeAttr(v.version)}')">
+                                        ${Icons.code(14)} Get TOML
+                                    </button>
+                                    ${canDelete ? `
+                                        <button class="btn btn--danger btn--sm" title="Delete all artifacts for version ${escapeAttr(v.version)}"
+                                                onclick="App.deleteSuiteVersion('${escapeAttr(s.name)}', '${escapeAttr(v.version)}', '${escapeAttr(JSON.stringify(v.paths))}')">
+                                            ${Icons.trash(14)}
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>`;
+                    }).join("");
+
+                    // Find underlying groups/artifacts
+                    const underlyingArtifacts = [];
+                    for (const [gName, gInfo] of allGroups) {
+                        for (const art of gInfo.artifacts) {
+                            if (s.id === 'kotlin' && gName.includes('org.jetbrains.kotlin')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'compose_multiplatform' && (gName.includes('org.jetbrains.compose') || gName.includes('skiko'))) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'agp' && gName.includes('com.android.tools')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'ktor' && gName.includes('io.ktor')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'koin' && gName.includes('insert-koin')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'coil' && gName.includes('coil')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'androidx_compose' && gName.startsWith('androidx.compose.')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'androidx_core' && gName.startsWith('androidx.') && !gName.startsWith('androidx.compose.')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'firebase' && (gName.includes('firebase') || gName.includes('com.google.android.gms'))) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                            else if (s.id === 'square' && gName.includes('com.squareup')) underlyingArtifacts.push(`${gName}:${art.name} (${art.total_size_fmt})`);
+                        }
+                    }
+
+                    return `
+                        <div class="suite-card" data-suite="${s.name.toLowerCase()} ${s.id}">
+                            <div class="suite-card-header">
+                                <div class="suite-info">
+                                    <div class="suite-icon">${s.icon || '📦'}</div>
+                                    <div class="suite-title">
+                                        <h3>${escapeHtml(s.name)}</h3>
+                                        <p>${escapeHtml(s.description || '')}</p>
+                                    </div>
+                                </div>
+                                <div class="suite-badges">
+                                    <span class="badge--match">${s.total_size_fmt}</span>
+                                    <span class="badge--cat" style="background:var(--bg-emphasis);color:var(--fg-muted);padding:3px 8px;border-radius:10px;font-size:11px;font-weight:600;">
+                                        ${s.artifact_count} artifacts combined
+                                    </span>
+                                    ${s.has_sprawl ? `<span class="badge--drift">⚠️ ${s.stale_size_fmt} duplicates</span>` : ''}
+                                </div>
+                            </div>
+
+                            <div class="suite-versions-list">
+                                ${versionsHtml}
+                            </div>
+
+                            <details class="suite-details">
+                                <summary>${Icons.chevronRight(13)} Inspect underlying ${underlyingArtifacts.length} Maven artifacts</summary>
+                                <div class="suite-details-body">
+                                    ${underlyingArtifacts.map(a => `<div>${escapeHtml(a)}</div>`).join("")}
+                                </div>
+                            </details>
+                        </div>`;
+                }).join("")}
+            </div>`;
+
+        // Render Raw Groups Table View
+        const groupsTableHtml = `
             <table class="data-table" id="libsTable">
                 <thead><tr>
                     <th><input type="checkbox" onchange="App.toggleAll(this,'lib-cb')"></th>
@@ -133,37 +365,109 @@ const Components = (() => {
                                 </span>
                                 <strong>${group}</strong>
                                 <span class="cell-mono">(${info.artifacts.length})</span>
+                                ${info.has_sprawl ? `<span class="badge--drift" style="margin-left:6px;">⚠️ ${formatSize(info.stale_size)} stale</span>` : ''}
                             </td>
                             <td>${versionCount}</td>
                             <td class="cell-size">${info.total_size_fmt}</td>
                             <td>${sizeTag(info.total_size)}</td>
-                            <td><button class="btn btn--danger btn--sm" onclick="App.requestDelete('${escapeAttr(info.path)}','${escapeAttr(group)}')">
-                                ${Icons.trash(14)}
-                            </button></td>
+                            <td>
+                                <div class="action-cell">
+                                    ${info.has_sprawl ? `
+                                        <button class="btn btn--ghost btn--sm" title="Delete old versions in this group" onclick="App.deduplicateGroup('${escapeAttr(group)}')">
+                                            ${Icons.checkCheck(13)} Deduplicate
+                                        </button>
+                                    ` : ''}
+                                    <button class="btn btn--danger btn--sm" onclick="App.requestDelete('${escapeAttr(info.path)}','${escapeAttr(group)}')">
+                                        ${Icons.trash(14)}
+                                    </button>
+                                </div>
+                            </td>
                         </tr>`;
+
                     const subRows = info.artifacts.flatMap(art =>
-                        art.versions.map(v => `
-                            <tr class="sub-row lib-row" data-group="${group.toLowerCase()}" data-parent="${escapeAttr(group)}">
-                                <td></td>
-                                <td class="cell-path" style="padding-left:52px">${art.name}:${v.version}</td>
-                                <td>1</td>
-                                <td class="cell-size">${v.size_fmt}</td>
-                                <td></td>
-                                <td>
-                                    <div class="action-cell">
-                                        <button class="btn btn--use btn--sm" onclick="App.showLibSnippet('${escapeAttr(group)}','${escapeAttr(art.name)}','${escapeAttr(v.version)}')">
-                                            ${Icons.code(14)} Use
-                                        </button>
-                                        <button class="btn btn--danger btn--sm" onclick="App.requestDelete('${escapeAttr(v.path)}','${escapeAttr(art.name + ":" + v.version)}')">
-                                            ${Icons.trash(14)}
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>`)
+                        art.versions.map(v => {
+                            const projectTags = art.used_in_projects && art.used_in_projects.length
+                                ? art.used_in_projects.map(p => `<span class="project-tag">${escapeHtml(p)}</span>`).join("")
+                                : "";
+
+                            const versionBadge = v.is_latest
+                                ? `<span class="badge--latest">Latest</span>`
+                                : (v.is_stale ? `<span class="badge--stale">Stale</span>` : '');
+
+                            return `
+                                <tr class="sub-row lib-row" data-group="${group.toLowerCase()}" data-parent="${escapeAttr(group)}">
+                                    <td></td>
+                                    <td class="cell-path" style="padding-left:52px">
+                                        ${art.name} : <strong>${v.version}</strong>
+                                        ${versionBadge}
+                                        ${projectTags}
+                                    </td>
+                                    <td>1</td>
+                                    <td class="cell-size">${v.size_fmt}</td>
+                                    <td></td>
+                                    <td>
+                                        <div class="action-cell">
+                                            <button class="btn btn--use btn--sm" onclick="App.showLibSnippet('${escapeAttr(group)}','${escapeAttr(art.name)}','${escapeAttr(v.version)}')">
+                                                ${Icons.code(14)} Use
+                                            </button>
+                                            <button class="btn btn--danger btn--sm" onclick="App.requestDelete('${escapeAttr(v.path)}','${escapeAttr(art.name + ":" + v.version)}')">
+                                                ${Icons.trash(14)}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>`;
+                        })
                     ).join("");
                     return groupRows + subRows;
                 }).join("")}</tbody>
             </table>`;
+
+        return `
+            <div class="section-header">
+                <h2>Libraries & Frameworks &middot; ${suites ? suites.length : 0} Suites &middot; ${allGroups.length} Groups &middot; ${formatSize(totalSize)}</h2>
+                <div style="display:flex;gap:8px;">
+                    ${totalStaleBytes > 0 ? `
+                        <button class="btn btn--primary btn--sm" onclick="App.deduplicateAllLibs()">
+                            ${Icons.checkCheck(14)} Clean Stale Versions (${formatSize(totalStaleBytes)})
+                        </button>
+                    ` : ''}
+                    <button class="btn btn--danger btn--sm" onclick="App.deleteSelected('lib-cb')">
+                        ${Icons.trash(14)} Delete Selected
+                    </button>
+                </div>
+            </div>
+
+            <!-- View Mode Switcher -->
+            <div class="view-mode-bar">
+                <button class="view-mode-btn ${viewMode === 'suites' ? 'active' : ''}" onclick="App.setLibViewMode('suites')">
+                    ${Icons.layers(14)} Framework Suites (${suites ? suites.length : 0})
+                </button>
+                <button class="view-mode-btn ${viewMode === 'sprawl' ? 'active' : ''}" onclick="App.setLibViewMode('sprawl')">
+                    ${Icons.gitBranch(14)} Version Sprawl (${sprawlArtifactsCount})
+                </button>
+                <button class="view-mode-btn ${viewMode === 'all' ? 'active' : ''}" onclick="App.setLibViewMode('all')">
+                    ${Icons.box(14)} All Maven Groups (${allGroups.length})
+                </button>
+            </div>
+
+            ${totalStaleBytes > 0 && viewMode === 'sprawl' ? `
+                <div class="sprawl-banner">
+                    <div>
+                        <strong>⚠️ Reclaimable Duplicate Storage:</strong>
+                        ${sprawlArtifactsCount} libraries have older versions taking up <strong>${formatSize(totalStaleBytes)}</strong> of disk space.
+                    </div>
+                    <button class="btn btn--primary btn--sm" onclick="App.deduplicateAllLibs()">
+                        ${Icons.checkCheck(14)} Clean Old Versions (Keep Latest)
+                    </button>
+                </div>
+            ` : ''}
+
+            <div class="search-box">
+                ${Icons.search(16)}
+                <input type="text" id="libSearch" placeholder="Filter suites or artifacts (e.g. kotlin, compose, ktor, coil)..." oninput="App.filterLibs()">
+            </div>
+
+            ${viewMode === 'suites' ? suitesHtml : groupsTableHtml}`;
     }
 
     // --- Caches -----------------------------------------------------
@@ -310,6 +614,38 @@ const Components = (() => {
             `zipStoreBase=GRADLE_USER_HOME`,
             `zipStorePath=wrapper/dists`,
         ].join("\n");
+    }
+
+    /**
+     * Render the snippet modal for a Framework Suite version.
+     */
+    function suiteSnippetModal(suiteId, suiteName, version, tomlSnippet) {
+        return `
+            <div class="modal modal--wide">
+                <div class="snippet-header">
+                    <div class="snippet-icon">${Icons.code(20)}</div>
+                    <div>
+                        <h3>${escapeHtml(suiteName)} &middot; v${escapeHtml(version)}</h3>
+                    </div>
+                </div>
+                <div class="snippet-subtitle">
+                    Add this to your <strong>gradle/libs.versions.toml</strong> to use this framework version across your project:
+                </div>
+
+                <div class="code-block-wrapper">
+                    <div class="format-tabs">
+                        <button class="format-tab active">libs.versions.toml</button>
+                    </div>
+                    <div class="code-block" id="snippetCode">${escapeHtml(tomlSnippet)}</div>
+                    <button class="copy-btn" onclick="App.copySnippet()">
+                        ${Icons.copy(13)} Copy to Clipboard
+                    </button>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn--ghost" onclick="App.closeSnippet()">Close</button>
+                </div>
+            </div>`;
     }
 
     /**
@@ -766,9 +1102,12 @@ const Components = (() => {
         deleteModal,
         formatSize,
         // Snippet generators
+        suiteSnippetModal,
         wrapperSnippetModal,
         libSnippetModal,
         libDeclarations,
+        // Projects alignment
+        alignment,
         // Properties builder
         propertiesBuilder,
         addFlagModal,

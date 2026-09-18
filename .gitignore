@@ -16,3 +16,9 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Gradle build artifacts
+.gradle/
+build/
+**/build/
+**/.gradle/

@@ -1,0 +1,34 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>io.nutritrack.gradle.versionguard</id>
+    <name>Gradle Version Guard</name>
+    <vendor email="devansh@nutritrack.io" url="https://github.com/devenvoy/gradle-cache-manager">NutriTrack</vendor>
+
+    <description><![CDATA[
+    <b>Gradle Version Guard</b> protects your machine from disk bloat by keeping all your Android and Kotlin Multiplatform projects aligned to a unified version baseline.<br><br>
+    <b>Features:</b>
+    <ul>
+        <li><b>Pre-Sync Drift Detection</b>: Inspects <code>libs.versions.toml</code>, <code>gradle-wrapper.properties</code>, and <code>gradle.properties</code> before Gradle Sync begins.</li>
+        <li><b>Interactive Alignment Dialog</b>: Lists all dependencies that differ from your machine baseline with clean diffs.</li>
+        <li><b>1-Click Alignment & Sync</b>: Automatically updates versions, wrapper distributions, and caching flags with automated safety backups.</li>
+        <li><b>Zero Dependencies</b>: Bridges with local Gradle Cache Manager or reads <code>~/.gradle/gcm-baseline.json</code> directly.</li>
+    </ul>
+    ]]></description>
+
+    <!-- Product and plugin compatibility requirements -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="io.nutritrack.versionguard.PreSyncStartupActivity"/>
+        <notificationGroup id="Gradle Version Guard" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <action id="io.nutritrack.versionguard.CheckAlignmentAction"
+                class="io.nutritrack.versionguard.CheckAlignmentAction"
+                text="Check Gradle Version Alignment..."
+                description="Checks current project versions against the machine-wide shared cache baseline">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

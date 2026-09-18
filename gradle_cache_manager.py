@@ -31,11 +31,16 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from scanner import scan_all
-from deleter import delete_paths, stop_daemons, DeleteError
+from deleter import delete_paths, stop_daemons, deduplicate_libraries, DeleteError
 from flags_registry import (
     get_all_flags, get_categories, add_custom_flag,
     remove_custom_flag, import_custom_flags, fetch_and_import_remote_flags
 )
+from project_scanner import (
+    discover_projects, compute_drift_matrix, get_or_create_baseline,
+    save_stored_baseline, apply_alignment_to_project
+)
+from init_enforcer import is_enforcer_enabled, enable_enforcer, disable_enforcer
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -99,6 +104,25 @@ class Handler(BaseHTTPRequestHandler):
                 "categories": get_categories(),
             })
 
+        elif path == "/api/projects":
+            projects = discover_projects()
+            drift_data = compute_drift_matrix(projects)
+            baseline = get_or_create_baseline(projects)
+            self._json({
+                "projects": projects,
+                "matrix": drift_data["matrix"],
+                "wrapper_drift": drift_data["wrapper_drift"],
+                "total_drifts": drift_data["total_drifts"],
+                "baseline": baseline,
+                "enforcer_enabled": is_enforcer_enabled(),
+            })
+
+        elif path == "/api/baseline":
+            self._json(get_or_create_baseline())
+
+        elif path == "/api/enforcer":
+            self._json({"enabled": is_enforcer_enabled()})
+
         else:
             self.send_error(404)
 
@@ -117,6 +141,43 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/stop-daemons":
             message = stop_daemons()
             self._json({"message": message})
+
+        elif path == "/api/projects/align":
+            project_paths = body.get("project_paths", [])
+            target_versions = body.get("target_versions", {})
+            align_wrapper = body.get("align_wrapper", True)
+            target_wrapper = body.get("target_wrapper")
+            align_properties = body.get("align_properties", True)
+
+            results = []
+            for p_path in project_paths:
+                res = apply_alignment_to_project(
+                    p_path, target_versions,
+                    align_wrapper=align_wrapper,
+                    target_wrapper=target_wrapper,
+                    align_properties=align_properties
+                )
+                results.append(res)
+            self._json({"success": True, "results": results})
+
+        elif path == "/api/baseline":
+            baseline_data = body.get("baseline", {})
+            if baseline_data:
+                save_stored_baseline(baseline_data)
+            self._json({"success": True})
+
+        elif path == "/api/enforcer/toggle":
+            if is_enforcer_enabled():
+                disable_enforcer()
+                self._json({"enabled": False})
+            else:
+                enable_enforcer()
+                self._json({"enabled": True})
+
+        elif path == "/api/libraries/deduplicate":
+            scope = body.get("scope")
+            result = deduplicate_libraries(scope)
+            self._json(result)
 
         elif path == "/api/flags/add":
             flag = body.get("flag", {})
